@@ -5,8 +5,20 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.autograd import Function, Variable
-from cupy.cuda import function
-from pynvrtc.compiler import Program
+
+use_gpu = True
+try:
+    from cupy.cuda import function
+except ImportError:
+    print('no cupy installed, running in CPU mode!')
+    use_gpu = False
+
+try:
+    from pynvrtc.compiler import Program
+except ImportError:
+    print('no pynvrtc installed, running in CPU mode!')
+    use_gpu = False
+
 from collections import namedtuple
 
 
@@ -571,7 +583,7 @@ class SRUCell(nn.Module):
         x_2d = x if x.dim() == 2 else x.contiguous().view(-1, n_in)
         u = x_2d.mm(self.weight)
 
-        if input.is_cuda:
+        if input.is_cuda and use_gpu:
             SRU_Compute = SRU_Compute_GPU(self.activation_type, n_out, self.bidirectional)
         else:
             SRU_Compute = SRU_Compute_CPU(self.activation_type, n_out, self.bidirectional)
