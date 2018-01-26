@@ -2,11 +2,12 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 from sru import SRU
+
 np.set_printoptions(suppress=True)
 np.random.seed(1)
 torch.manual_seed(1)
 if torch.cuda.is_available():
-	torch.cuda.manual_seed(1)
+    torch.cuda.manual_seed(1)
 
 x0 = np.random.random_sample((2, 4, 6))
 x = Variable(torch.FloatTensor(x0))
