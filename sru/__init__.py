@@ -3,13 +3,18 @@ import torch
 import torch.nn as nn
 from torch.autograd import Function, Variable
 
-use_gpu = True
-try:
-    from ._ext import sru_cu
-except ImportError as e:
-    print('cuda sru error %s, running in CPU mode.' % e)
-    use_gpu = False
-    sru_cu = None
+use_gpu = torch.cuda.is_available()
+
+if use_gpu:
+    try:
+        from ._ext import sru_cu
+    except ImportError as e:
+        print(e)
+        use_gpu = False
+        sru_cu = None
+
+if not use_gpu:
+    print('gpu mode not supported, cu sru running in CPU mode')
 
 
 class SRUComputeGPU(Function):
@@ -37,9 +42,14 @@ class SRUComputeGPU(Function):
 
         func = sru_cu.sru_forward_cuda if not self.bidirectional else sru_cu.sru_bi_forward_cuda
 
-        func(u.contiguous(), x.contiguous() if k_ == 3 else torch.Tensor([0]).cuda(), bias,
-             init_.contiguous(), mask_h if mask_h is not None else torch.Tensor([0]).cuda(), h, c,
-             length, batch, d, k_, self.activation_type)
+        if mask_h is None:
+            mask_ht = torch.Tensor([0]).cuda()
+            mask_flag = 0
+        else:
+            mask_ht = mask_h
+            mask_flag = 1
+        func(u.contiguous(), x.contiguous(), bias, init_.contiguous(),
+             mask_ht, h, c, length, batch, d, k_, self.activation_type, mask_flag)
 
         self.save_for_backward(u, x, bias, init, mask_h)
         self.intermediate = c
@@ -73,16 +83,22 @@ class SRUComputeGPU(Function):
         # grad_x = x.new(*x.size()) if k_ == 3 else x.new(*size).zero_()
 
         # Normal use
-        grad_x = x.new(*x.size()) if k_ == 3 else None
+        grad_xt = x.new(*x.size())
+        grad_x = grad_xt if k_ == 3 else None
 
         func = sru_cu.sru_backward_cuda if not self.bidirectional else sru_cu.sru_bi_backward_cuda
-        func(u.contiguous(),
-             x.contiguous() if k_ == 3 else torch.Tensor([0]).cuda(),
-             bias, init_.contiguous(),
-             mask_h if mask_h is not None else torch.Tensor([0]).cuda(),
-             c, grad_h.contiguous(), grad_last.contiguous(),
-             grad_bias, grad_init, grad_u, grad_x if k_ == 3 else torch.Tensor([0]).cuda(),
-             length, batch, d, k_, self.activation_type)
+
+        if mask_h is None:
+            mask_ht = torch.Tensor([0]).cuda()
+            mask_flag = 0
+        else:
+            mask_ht = mask_h
+            mask_flag = 1
+
+        func(u.contiguous(), x.contiguous(), bias, init_.contiguous(),
+             mask_ht, c, grad_h.contiguous(), grad_last.contiguous(),
+             grad_u, grad_xt, grad_bias, grad_init,
+             length, batch, d, k_, self.activation_type, mask_flag)
         return grad_u, grad_x, grad_bias.sum(1).view(-1), grad_init, None
 
 
@@ -263,4 +279,3 @@ class SRU(nn.Module):
             return prev_x, torch.stack(last_c)
         else:
             return prev_x
-

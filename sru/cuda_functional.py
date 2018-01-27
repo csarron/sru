@@ -1,23 +1,23 @@
-# from builtins import bytes
-import time
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.autograd import Function, Variable
 from collections import namedtuple
 
-use_gpu = True
-try:
-    from cupy.cuda import function
-except ImportError:
-    print('no cupy installed, SRU is running in CPU mode!')
-    use_gpu = False
+use_gpu = torch.cuda.is_available()
+if use_gpu:
+    try:
+        from cupy.cuda import function
+    except ImportError:
+        print('no cupy installed!')
+        use_gpu = False
+    try:
+        from pynvrtc.compiler import Program
+    except ImportError:
+        print('no pynvrtc installed!')
+        use_gpu = False
 
-try:
-    from pynvrtc.compiler import Program
-except ImportError:
-    print('no pynvrtc installed, SRU is running in CPU mode!')
-    use_gpu = False
+if not use_gpu:
+    print('gpu mode not supported, cuda_functional sru running in CPU mode')
 
 SRU_CODE = """
 extern "C" {
